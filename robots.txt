@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://kazuyan38.github.io/nikkei-test-atelier/sitemap.xml
