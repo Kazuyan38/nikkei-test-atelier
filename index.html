@@ -237,6 +237,36 @@ footer.foot .scr { font-size: 26px; color: var(--gold); }
 .relbtn:hover { border-color: var(--line-strong); color: var(--gold-hi); }
 .relbtn b { font-family: var(--serif); color: var(--gold); font-weight: 400; margin-right: 8px; }
 .toggle.on { border-color: var(--ok); color: var(--ok); }
+/* 用語の詳細（カード・詳細シート共通） */
+.tc-h { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.badge.ok { color: var(--ok); border-color: rgba(134,207,166,.5); flex: none; }
+.tbox .k, .exs .k, .rterms .k, .guide .k, .qc .k, .sk { display: block; font-size: 10px; letter-spacing: .28em; color: var(--gold); margin-bottom: 4px; font-weight: 600; }
+.sk { margin: 20px 0 6px; }
+.sheet-body .def { margin: 0 0 10px; }
+.tbox { margin: 10px 0; padding: 10px 14px; font-size: 14px; line-height: 1.75; border-left: 2px solid var(--gold); background: rgba(255,255,255,.025); color: var(--ink-soft); }
+.tbox.calc { border-left-color: var(--gold-hi); font-family: var(--serif); font-variant-numeric: tabular-nums; color: var(--ink); }
+.tbox.vs { border-left-color: var(--ng); }
+.tbox.vs .k { color: var(--ng); }
+.exs { margin: 14px 0 4px; }
+.exi { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid rgba(201,169,97,.1); font-size: 14px; color: var(--ink-soft); line-height: 1.75; }
+.exs .k + .exi { border-top: 0; }
+.yr { font-family: var(--serif); color: var(--gold); font-size: 12px; border: 1px solid var(--line-strong); padding: 0 6px; height: fit-content; margin-top: 3px; letter-spacing: .06em; }
+.rel { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.rterms { margin-top: 14px; }
+.chip.sm { min-height: 40px; padding: 6px 12px; font-size: 12.5px; }
+.guide { display: grid; gap: 18px; margin-top: 14px; padding-top: 16px; border-top: 1px solid var(--line); }
+@media (min-width: 900px) { .guide { grid-template-columns: 1.15fr 1fr; gap: 28px; } }
+.guide p { margin: 0; font-size: 14px; color: var(--ink-soft); line-height: 1.85; }
+.guide ol { margin: 0; padding-left: 1.4em; font-size: 14px; color: var(--ink-soft); line-height: 1.7; }
+.guide li { margin: 3px 0; }
+.ln-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 6px 0 14px; }
+.tc.quiz { border-color: var(--line-strong); }
+.qc { margin: 2px 0 6px; }
+.qc-h { display: flex; justify-content: space-between; align-items: center; }
+.qc-x { width: 44px; height: 44px; margin: -10px -10px 0 0; background: transparent; border: 0; color: var(--muted); font-size: 22px; cursor: pointer; }
+.qc .q { font-family: var(--serif); font-weight: 600; margin: 2px 0 10px; line-height: 1.7; }
+.qc .quote { font-size: 14px; }
+.tc .verdict { margin-top: 12px; }
 .star.on { border-color: var(--gold); color: var(--gold-hi); }
 
 /* ── drill ── */
@@ -375,6 +405,8 @@ const DOM = Object.fromEntries(D.domains.map(d => [d.id, d]));
 const DIDS = D.domains.map(d => d.id);
 const TERMS = D.terms;
 const TERM = Object.fromEntries(TERMS.map(t => [t.id, t]));
+// data.js の enrich（既存用語への追記）を取り込む
+Object.entries(D.enrich || {}).forEach(([id, x]) => { if (TERM[id]) Object.assign(TERM[id], x); });
 const NEWS = D.news.slice().sort((a, b) => b.date.localeCompare(a.date));
 const NEWSM = Object.fromEntries(NEWS.map(n => [n.id, n]));
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI'];
@@ -418,7 +450,7 @@ function toast(msg) {
 /* ════════════ search index ════════════ */
 const norm = s => String(s).normalize('NFKC').toLowerCase().replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
 const IDX = [
-  ...TERMS.map(t => ({ type: 'term', id: t.id, d: [t.d], hay: norm([t.t, t.en, t.def, t.ex, t.kw || '', DOM[t.d].ja].join(' ')) })),
+  ...TERMS.map(t => ({ type: 'term', id: t.id, d: [t.d], hay: norm([t.t, t.en, t.def, t.ex, t.kw || '', t.pt || '', t.vs || '', t.calc || '', (t.more || []).map(m => m.join(' ')).join(' '), DOM[t.d].ja].join(' ')) })),
   ...NEWS.map(n => ({ type: 'news', id: n.id, d: n.d, hay: norm([n.title, n.body, n.pt, n.date, fmtDate(n.date), `${+n.date.slice(0, 4)}年${+n.date.slice(5, 7)}月${+n.date.slice(8)}日`, n.d.map(x => DOM[x].ja).join(' ')].join(' ')) }))
 ];
 function highlight(text, tokens) {
@@ -444,29 +476,39 @@ function keysOf(t) {
   return [...ks].filter(k => k.length >= 2).sort((a, b) => b.length - a.length);
 }
 const mask = (text, t) => keysOf(t).reduce((s, k) => s.split(k).join('〇〇'), text);
-function distractors(t, n = 3) {
+// 同じ分野の語を優先し、prefer を満たす語（例：計算式を持つ語）をさらに優先する
+function distractors(t, n = 3, prefer = () => true) {
   const same = shuffle(TERMS.filter(x => x.d === t.d && x.id !== t.id));
   const other = shuffle(TERMS.filter(x => x.d !== t.d));
-  return same.concat(other).slice(0, n);
+  const pool = same.filter(prefer).concat(same.filter(x => !prefer(x)), other);
+  return pool.slice(0, n);
 }
 function permute(q) {
   const order = shuffle(q.c.map((_, i) => i));
   return Object.assign({}, q, { c: order.map(i => q.c[i]), a: order.indexOf(q.a) });
 }
+const pick1 = a => a[Math.random() * a.length | 0];
+// 出題の型: 0 定義→用語 / 1 用語→定義 / 2 2026年の事例→用語 / 3 2024〜25年の事例→用語 / 4 試験のポイント→用語 / 5 計算式→指標
+const kindsOf = t => [0, 1, 2, ...(t.more && t.more.length ? [3] : []), ...(t.pt ? [4] : []), ...(t.calc ? [5] : [])];
 function termQ(t, kind) {
-  const ds = distractors(t);
-  const all = [t, ...ds];
-  if (kind === 0) return permute({ kind: 'term', tid: t.id, d: t.d, q: '次の説明に当てはまる用語はどれか。', quote: mask(t.def, t),
-    c: all.map(x => x.t), a: 0, exp: `正解は「${t.t}」。${t.def}`, rel: [t.id] });
-  if (kind === 1) return permute({ kind: 'term', tid: t.id, d: t.d, q: `「${t.t}」の説明として最も適切なものはどれか。`, quote: '',
-    c: all.map(x => mask(firstSentence(x.def), x)), a: 0, exp: `${t.def}`, rel: [t.id] });
-  return permute({ kind: 'term', tid: t.id, d: t.d, q: '次の事例と最も関係の深い用語はどれか。', quote: mask(t.ex, t),
-    c: all.map(x => x.t), a: 0, exp: `正解は「${t.t}」。${t.ex}`, rel: [t.id] });
+  if (kind === 3 && !(t.more && t.more.length)) kind = 2;
+  if (kind === 4 && !t.pt) kind = 0;
+  if (kind === 5 && !t.calc) kind = 0;
+  const all = [t, ...distractors(t, 3, kind === 5 ? x => !!x.calc : () => true)];
+  const base = { kind: 'term', tid: t.id, d: t.d, a: 0, rel: [t.id] };
+  const toTerm = (q, quote, exp) => permute(Object.assign({}, base, { q, quote: mask(quote, t), c: all.map(x => x.t), exp: `正解は「${t.t}」。${exp}` }));
+  if (kind === 1) return permute(Object.assign({}, base, { q: `「${t.t}」の説明として最も適切なものはどれか。`, quote: '',
+    c: all.map(x => mask(firstSentence(x.def), x)), exp: t.def }));
+  if (kind === 2) return toTerm('次の事例と最も関係の深い用語はどれか。', t.ex, t.ex);
+  if (kind === 3) { const [y, m] = pick1(t.more); return toTerm(`次の出来事（${y}年）と最も関係の深い用語はどれか。`, m, m); }
+  if (kind === 4) return toTerm('次の「試験のポイント」に当てはまる用語はどれか。', t.pt, t.pt);
+  if (kind === 5) return toTerm('次の式で求める指標（または関係）はどれか。', t.calc, `${t.calc}。${firstSentence(t.def)}`);
+  return toTerm('次の説明に当てはまる用語はどれか。', t.def, t.def);
 }
 function genQuestions(doms, n, type) {
   const inD = d => !doms.size || doms.has(d);
   const app = shuffle(D.drills.filter(q => inD(q.d)).map(q => permute(Object.assign({ kind: 'app', quote: '', rel: [] }, q))));
-  const tq = shuffle(TERMS.filter(t => inD(t.d))).map((t, i) => termQ(t, i % 3));
+  const tq = shuffle(TERMS.filter(t => inD(t.d))).map(t => termQ(t, pick1(kindsOf(t))));
   let out;
   if (type === 'app') out = app.slice(0, n);
   else if (type === 'term') out = tq.slice(0, n);
@@ -511,7 +553,7 @@ function renderHome() {
     <div class="eyebrow">Nikkei TEST Preparation · As of ${esc(fmtDate(D.asOf))}</div>
     <h1 class="scr gold-text">Read the Economy</h1>
     <div class="jp">経済を、読む力に。</div>
-    <p class="lead">日経TEST の6分野を、<b>基本用語</b>・<b>2026年の具体例</b>・<b>応用演習</b>の三つで往復する個人用の対策帳。すべての用語とニュースは保管庫からキーワードで引けます。</p>
+    <p class="lead">日経TEST の6分野を、<b>基本用語</b>・<b>2024〜2026年の具体例</b>・<b>応用演習</b>の三つで往復する個人用の対策帳。すべての用語とニュースは保管庫からキーワードで引けます。</p>
     <div class="cta">
       <a class="btn gold" href="#drill">演習を始める</a>
       <a class="btn" href="#flash">単語テスト</a>
@@ -528,7 +570,7 @@ function renderHome() {
   <div class="sec-h"><span class="scr">Three Studies</span><span class="ja">三つの学び方</span></div>
   <div class="grid modes">
     <a class="panel framed mode" href="#flash"><div class="scr">Vocabulary</div><h3>単語テスト</h3><p>カードをめくって定義を確認し、「知ってる／あやふや／知らない」で自己採点。苦手だけを繰り返せます。</p></a>
-    <a class="panel framed mode" href="#learn"><div class="scr">Knowledge</div><h3>知識確認</h3><p>分野ごとに定義と2026年の具体例を読み、関連ニュースへ。理解したらチェックして習得語に加算。</p></a>
+    <a class="panel framed mode" href="#learn"><div class="scr">Knowledge</div><h3>知識確認</h3><p>分野ごとの学び方と頻出論点、各語の定義・計算式・試験のポイント・2024〜26年の具体例。カードごとの確認問題でその場でチェック。</p></a>
     <a class="panel framed mode" href="#drill"><div class="scr">Practice</div><h3>演習</h3><p>計算・因果を問う応用問題と、用語から自動生成する問題の4択。解説と分野別の正答率つき。</p></a>
   </div>
 
@@ -649,6 +691,8 @@ function drawFlash() {
         <div class="face back panel framed">
           <h4>${esc(t.t)}</h4>
           <p class="def">${esc(t.def)}</p>
+          ${t.calc ? `<div class="tbox calc"><span class="k">FORMULA</span>${esc(t.calc).replace(/　／　/g, '<br>')}</div>` : ''}
+          ${t.pt ? `<div class="tbox pt"><span class="k">EXAM POINT</span>${esc(t.pt)}</div>` : ''}
           <div class="ex"><span class="k">2026 EXAMPLE</span>${esc(t.ex)}</div>
         </div>
       </div>
@@ -685,9 +729,10 @@ function renderLearn(params) {
   const dm = DOM[d], idx = DIDS.indexOf(d);
   const ts = TERMS.filter(t => t.d === d), ns = NEWS.filter(n => n.d.includes(d));
   const mm = ts.filter(t => mastered(t.id)).length;
+  const shown = ts.filter(t => LN.f === 'all' || (LN.f === 'todo' ? !mastered(t.id) : !!S.bm[t.id]));
   main.innerHTML = `
     <div class="page-h"><span class="scr gold-text">Knowledge</span><h1>知識の確認と具体例</h1>
-      <p>定義を読み、2026年の具体例で使いどころをつかむ。分かったら「理解した」で習得語に加算。</p></div>
+      <p>定義・計算式・試験のポイント・2024〜2026年の具体例を読み、カードの「確認問題」でその場で確かめる。分かったら「理解した」で習得語に加算。</p></div>
     <div class="chips rail" style="margin-bottom:18px">
       ${D.domains.map(x => `<a class="chip ${x.id === d ? 'on' : ''}" href="#learn?d=${x.id}" style="--c:${x.hue};text-decoration:none"><span class="dot"></span>${esc(x.ja)}</a>`).join('')}
     </div>
@@ -696,16 +741,24 @@ function renderLearn(params) {
       <span class="scr">${esc(dm.en)}</span>
       <h2>${esc(dm.ja)}</h2>
       <div class="bar" style="margin-top:8px"><i style="width:${mm / ts.length * 100}%"></i></div>
-      <div class="muted num" style="font-size:12.5px">習得 ${mm} / ${ts.length}　関連ニュース ${ns.length}件</div>
+      <div class="muted num" style="font-size:12.5px">習得 ${mm} / ${ts.length}　関連ニュース ${ns.length}件　応用問題 ${D.drills.filter(q => q.d === d).length}問</div>
+      ${dm.guide ? `<div class="guide">
+        <div class="g-col"><span class="k">HOW TO STUDY　学び方</span><p>${esc(dm.guide)}</p></div>
+        <div class="g-col"><span class="k">KEY TOPICS　頻出論点</span><ol>${(dm.topics || []).map(x => `<li>${esc(x)}</li>`).join('')}</ol></div>
+      </div>` : ''}
       <div class="acts">
         <a class="btn gold sm" href="#drill?d=${d}&go=1">この分野で演習</a>
         <a class="btn sm" href="#flash?d=${d}">この分野の単語テスト</a>
       </div>
     </section>
-    <div class="grid terms">
-      ${ts.map(t => termCard(t)).join('')}
+    <div class="ln-bar">
+      <div class="seg">${[['all', 'すべて'], ['todo', '未習得のみ'], ['bm', '★ 保存のみ']].map(([k, v]) => `<button class="${LN.f === k ? 'on' : ''}" data-act="ln-filter" data-id="${k}">${v}</button>`).join('')}</div>
+      <span class="count num" style="margin:0">${shown.length} / ${ts.length} 語</span>
     </div>
-    <div class="sec-h"><span class="scr">Cases 2026</span><span class="ja">${esc(dm.ja)}のニュース</span></div>
+    <div class="grid terms">
+      ${shown.map(t => termCard(t)).join('') || `<div class="panel empty">${LN.f === 'todo' ? 'この分野はすべて習得済みです。' : '保存した用語はまだありません。'}</div>`}
+    </div>
+    <div class="sec-h"><span class="scr">Cases</span><span class="ja">${esc(dm.ja)}のニュース（2024〜2026年）</span></div>
     <div class="list">
       ${ns.map(n => `<button class="li" data-act="news" data-id="${n.id}"><span class="d num">${fmtDate(n.date).slice(5)}</span><span class="t">${esc(n.title)}</span><span class="s">${esc(snippet(n.body, [], 80))}</span></button>`).join('') || '<div class="empty">ニュースはまだありません。</div>'}
     </div>`;
@@ -715,19 +768,67 @@ function renderLearn(params) {
     if (el) requestAnimationFrame(() => { el.scrollIntoView({ block: 'start' }); el.classList.add('flash-hl'); });
   }
 }
+const LN = { f: 'all' };
+const QC = {}; // 用語カード内の確認問題 { [termId]: { q, pick } }
+
+// 明示の関連語（see）＋同じニュースに紐づく語
+function relatedTerms(t, max = 8) {
+  const ids = new Set(t.see || []);
+  t.rel.forEach(n => TERMS.forEach(x => { if (x.rel.includes(n)) ids.add(x.id); }));
+  ids.delete(t.id);
+  return [...ids].map(id => TERM[id]).filter(Boolean).slice(0, max);
+}
+// 定義・計算式・ポイント・混同注意・具体例・関連ニュース・関連用語（カードと詳細シートで共用）
+function termBody(t, full) {
+  const exs = [['2026', t.ex], ...(t.more || []).slice().sort((a, b) => b[0].localeCompare(a[0]))];
+  const news = t.rel.map(id => NEWSM[id]).filter(Boolean).sort((a, b) => b.date.localeCompare(a.date));
+  const rt = relatedTerms(t);
+  return `<p class="def">${esc(t.def)}</p>
+    ${t.calc ? `<div class="tbox calc"><span class="k">FORMULA　計算式</span>${esc(t.calc).replace(/　／　/g, '<br>')}</div>` : ''}
+    ${t.pt ? `<div class="tbox pt"><span class="k">EXAM POINT　試験のポイント</span>${esc(t.pt)}</div>` : ''}
+    ${t.vs ? `<div class="tbox vs"><span class="k">DON'T CONFUSE　混同注意</span>${esc(t.vs)}</div>` : ''}
+    <div class="exs"><span class="k">EXAMPLES　具体例</span>
+      ${exs.map(([y, x]) => `<div class="exi"><span class="yr num">${esc(y)}</span><span>${esc(x)}</span></div>`).join('')}
+    </div>
+    ${news.length ? `<div class="rel">${news.map(n => `<button class="relbtn" data-act="news" data-id="${n.id}"><b class="num">${full ? fmtDate(n.date) : fmtDate(n.date).slice(0, 7)}</b>${esc(n.title)}</button>`).join('')}</div>` : ''}
+    ${rt.length ? `<div class="rterms"><span class="k">RELATED　関連用語</span><div class="chips">${rt.map(x => `<button class="chip sm" data-act="term" data-id="${x.id}" style="--c:${DOM[x.d].hue}"><span class="dot"></span>${esc(x.t)}</button>`).join('')}</div></div>` : ''}`;
+}
+// 確認問題: その語に紐づく応用問題を優先し、なければ用語から自動生成（型はランダム）
+function checkQ(t) {
+  const apps = D.drills.filter(q => (q.rel || []).includes(t.id));
+  if (apps.length && Math.random() < 0.6) return permute(Object.assign({ kind: 'app', quote: '', rel: [] }, pick1(apps)));
+  return termQ(t, pick1(kindsOf(t)));
+}
+function qcBlock(t) {
+  const st = QC[t.id]; if (!st) return '';
+  const { q, pick } = st, L = ['A', 'B', 'C', 'D'], done = pick !== undefined;
+  return `<div class="qc">
+    <div class="qc-h"><span class="k">CHECK　確認問題</span><button class="qc-x" data-act="qc-close" data-id="${t.id}" aria-label="確認問題を閉じる">×</button></div>
+    <div class="q">${esc(q.q)}</div>
+    ${q.quote ? `<div class="quote">${esc(q.quote)}</div>` : ''}
+    <div class="opts ${done ? 'done' : ''}">${q.c.map((c, i) => `<button class="opt ${done ? (i === q.a ? 'ok' : i === pick ? 'ng' : 'dim') : ''}" data-act="qc-pick" data-id="${t.id}" data-i="${i}"><span class="l">${L[i]}</span><span>${esc(c)}</span></button>`).join('')}</div>
+    ${done ? `<div class="verdict ${pick === q.a ? 'good' : 'bad'}"><div class="scr">${pick === q.a ? 'Correct' : 'Not quite'}</div><p>${pick === q.a ? '' : `正解は <b>${L[q.a]}</b>。`}${esc(q.exp)}</p></div>
+      <div class="next-row"><button class="btn sm" data-act="qc-open" data-id="${t.id}">別の問題</button><button class="btn sm gold" data-act="qc-close" data-id="${t.id}">カードに戻る</button></div>` : ''}
+  </div>`;
+}
 function termCard(t) {
   const known = mastered(t.id), bm = !!S.bm[t.id];
-  return `<article class="panel tc" id="tc-${t.id}">
-    <h3>${esc(t.t)}</h3>
-    <div class="en">${esc(t.en)}</div>
-    <p class="def">${esc(t.def)}</p>
-    <div class="ex"><span class="k">2026 EXAMPLE</span>${esc(t.ex)}</div>
-    ${t.rel.length ? `<div class="rel">${t.rel.map(id => NEWSM[id] ? `<button class="relbtn" data-act="news" data-id="${id}"><b class="num">${fmtDate(NEWSM[id].date).slice(5)}</b>${esc(NEWSM[id].title)}</button>` : '').join('')}</div>` : ''}
+  const quiz = QC[t.id] && QC[t.id].pick === undefined; // 回答前はカードを伏せる
+  return `<article class="panel tc ${quiz ? 'quiz' : ''}" id="tc-${t.id}">
+    ${quiz ? '' : `<div class="tc-h"><h3>${esc(t.t)}</h3>${known ? '<span class="badge ok">習得</span>' : ''}</div>
+    <div class="en">${esc(t.en)}</div>`}
+    ${qcBlock(t)}
+    ${quiz ? '' : `${termBody(t, false)}
     <div class="foot-row">
+      <button class="btn sm gold" data-act="qc-open" data-id="${t.id}">確認問題</button>
       <button class="btn sm toggle ${known ? 'on' : ''}" data-act="know" data-id="${t.id}">${known ? '✓ 理解済み' : '理解した'}</button>
       <button class="btn sm star ${bm ? 'on' : ''}" data-act="bm" data-id="${t.id}">${bm ? '★ 保存済み' : '☆ 保存'}</button>
-    </div>
+    </div>`}
   </article>`;
+}
+function redrawCard(id) {
+  const el = document.getElementById('tc-' + id);
+  if (el) el.outerHTML = termCard(TERM[id]);
 }
 
 /* ════════════ DRILL ════════════ */
@@ -916,16 +1017,13 @@ function closeSheet() {
 function openTerm(id) {
   const t = TERM[id]; if (!t) return;
   const bm = !!S.bm[id], known = mastered(id);
-  const rel = t.rel.map(x => NEWSM[x]).filter(Boolean);
   openSheet(`${domTag(t.d)}
     <h2>${esc(t.t)}</h2><div class="en">${esc(t.en)}</div>
-    <h5>DEFINITION　定義</h5><p>${esc(t.def)}</p>
-    <h5>2026 EXAMPLE　具体例</h5><div class="ex">${esc(t.ex)}</div>
-    ${rel.length ? `<h5>RELATED NEWS　関連ニュース</h5><div class="rel" style="display:flex;flex-direction:column;gap:6px">${rel.map(n => `<button class="relbtn" data-act="news" data-id="${n.id}"><b class="num">${fmtDate(n.date)}</b>${esc(n.title)}</button>`).join('')}</div>` : ''}
+    <div class="sheet-body"><span class="k sk">DEFINITION　定義</span>${termBody(t, true)}</div>
     <div class="acts">
       <button class="btn sm star ${bm ? 'on' : ''}" data-act="bm" data-id="${id}">${bm ? '★ 保存済み' : '☆ 保存'}</button>
       <button class="btn sm toggle ${known ? 'on' : ''}" data-act="know" data-id="${id}">${known ? '✓ 理解済み' : '理解した'}</button>
-      <a class="btn sm" href="#learn?d=${t.d}&t=${id}" data-act="close-nav">分野ページで見る</a>
+      <a class="btn sm" href="#learn?d=${t.d}&t=${id}" data-act="close-nav">分野ページで確認問題</a>
     </div>`);
 }
 function openNews(id) {
@@ -945,10 +1043,7 @@ wrap.addEventListener('click', e => { if (e.target === wrap) closeSheet(); });
 /* ════════════ actions ════════════ */
 function refreshAfterToggle(id) {
   if (wrap.classList.contains('on')) { (TERM[id] ? openTerm : openNews)(id); }
-  if (current === 'learn' && TERM[id]) {
-    const el = document.getElementById('tc-' + id);
-    if (el) el.outerHTML = termCard(TERM[id]);
-  }
+  if (current === 'learn' && TERM[id]) redrawCard(id);
   if (current === 'vault') drawVault();
 }
 const ACT = {
@@ -975,6 +1070,22 @@ const ACT = {
       setTimeout(() => { if (el.isConnected) { delete el.dataset.armed; el.textContent = '学習記録をリセット'; } }, 3500);
     }
   },
+  'ln-filter': el => { LN.f = el.dataset.id; renderLearn(new URLSearchParams()); },
+  'qc-open': el => {
+    const t = TERM[el.dataset.id]; if (!t) return;
+    QC[t.id] = { q: checkQ(t), pick: undefined }; redrawCard(t.id);
+    const c = document.getElementById('tc-' + t.id); if (c) c.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  },
+  'qc-pick': el => {
+    const id = el.dataset.id, st = QC[id]; if (!st || st.pick !== undefined) return;
+    st.pick = +el.dataset.i;
+    const ok = st.pick === st.q.a;
+    S.drill.a++; if (ok) S.drill.c++;
+    if (st.q.kind === 'term') { const b = S.box[st.q.tid] || 0; setBox(st.q.tid, ok ? b + 1 : 0); }
+    else if (!ok) setBox(id, Math.min(S.box[id] || 0, 1));
+    touchDay(); save(); GL.pulse(ok); redrawCard(id);
+  },
+  'qc-close': el => { delete QC[el.dataset.id]; redrawCard(el.dataset.id); },
   'fl-dom': el => {
     const id = el.dataset.id;
     if (id === 'all') FL.doms.clear(); else FL.doms.has(id) ? FL.doms.delete(id) : FL.doms.add(id);
