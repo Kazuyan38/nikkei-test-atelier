@@ -1,0 +1,17 @@
+{
+  "name": "Nikkei Atelier — 日経TEST 対策帳",
+  "short_name": "日経TEST",
+  "description": "日経TEST 6分野の単語テスト・知識確認・演習と、2026年ニュースの保管庫。",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#06080d",
+  "theme_color": "#06080d",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
